@@ -91,12 +91,11 @@ exports.getDriversByStatus = async (req, res) => {
   }
 };
 
-// Get available drivers (not assigned to any bus)
+// Get available drivers (only by availability status)
 exports.getAvailableDrivers = async (req, res) => {
   try {
     const drivers = await Driver.find({ 
-      availabilityStatus: 'Available',
-      assignedBus: { $in: ['', null] }
+      availabilityStatus: 'Available'
     });
     res.json(drivers);
   } catch (err) {
