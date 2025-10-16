@@ -5,7 +5,7 @@ require('dotenv').config();
 const createAdmin = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/bus_admin', {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bus_management', {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
