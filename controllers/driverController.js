@@ -51,6 +51,11 @@ exports.createDriver = async (req, res) => {
   try {
     console.log('Creating driver with data:', req.body);
     const { licenseNumber, contactNumber } = req.body;
+
+    // Enforce: profile photo can ONLY be set via upload endpoint
+    if (req.body.profilePhoto) {
+      delete req.body.profilePhoto;
+    }
     
     // Check for duplicate license number
     let existingDriver = await Driver.findOne({ licenseNumber });
@@ -84,6 +89,11 @@ exports.createDriver = async (req, res) => {
 exports.updateDriver = async (req, res) => {
   try {
     const { licenseNumber, contactNumber } = req.body;
+
+    // Enforce: profile photo can ONLY be set via upload endpoint
+    if (req.body.profilePhoto) {
+      delete req.body.profilePhoto;
+    }
     
     // Check for duplicate license number
     if (licenseNumber) {
