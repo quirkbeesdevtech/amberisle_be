@@ -5,6 +5,13 @@ const fs = require('fs');
 // Get all drivers
 exports.getDrivers = async (req, res) => {
   try {
+    // First, update any expired licenses
+    await Driver.updateExpiredLicenses();
+    
+    // Then, restore drivers with renewed licenses
+    await Driver.restoreRenewedDrivers();
+    
+    // Then fetch all drivers
     const drivers = await Driver.find().sort({ fullName: 1 });
     res.json(drivers);
   } catch (err) {
@@ -100,14 +107,43 @@ exports.updateDriver = async (req, res) => {
       }
     }
 
+    // Get the current driver before updating
+    const currentDriver = await Driver.findById(req.params.id);
+    if (!currentDriver) {
+      return res.status(404).json({ error: 'Driver not found' });
+    }
+
     const driver = await Driver.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true, runValidators: true }
     );
-    if (!driver) {
-      return res.status(404).json({ error: 'Driver not found' });
+
+    // Check if license expiry was updated to a future date and restore status if needed
+    if (req.body.licenseExpiry) {
+      const newExpiryDate = new Date(req.body.licenseExpiry);
+      const now = new Date();
+      
+      console.log('License expiry update check:', {
+        driverId: driver._id,
+        newExpiryDate,
+        currentStatus: driver.availabilityStatus,
+        previousStatus: driver.previousStatus,
+        isFutureDate: newExpiryDate > now
+      });
+      
+      // If new expiry date is in the future and driver was inactive due to expiry
+      if (newExpiryDate > now && driver.availabilityStatus === 'Inactive' && driver.previousStatus && driver.previousStatus !== 'Inactive') {
+        console.log('Restoring driver status from', driver.availabilityStatus, 'to', driver.previousStatus);
+        driver.availabilityStatus = driver.previousStatus;
+        driver.isActive = true;
+        driver.lastStatusUpdate = now;
+        driver.licenseExpiryWarning = false;
+        await driver.save();
+        console.log('Driver status restored successfully');
+      }
     }
+
     res.json(driver);
   } catch (err) {
     if (err.name === 'ValidationError') {
@@ -257,6 +293,53 @@ exports.updateExpiredLicenses = async (req, res) => {
     res.json({
       message: 'License expiry check completed',
       expiredCount: result.modifiedCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Manual check and update expired licenses (for testing)
+exports.checkExpiredLicenses = async (req, res) => {
+  try {
+    const now = new Date();
+    console.log('Current date:', now);
+    
+    // Get all drivers with expired licenses (regardless of current status)
+    const expiredDrivers = await Driver.find({
+      licenseExpiry: { $lte: now }
+    });
+    
+    console.log('Found expired drivers:', expiredDrivers.length);
+    
+    // Update expired licenses
+    const result = await Driver.updateExpiredLicenses();
+    
+    // Restore drivers with renewed licenses
+    const restoreResult = await Driver.restoreRenewedDrivers();
+    
+    // Get updated drivers
+    const updatedDrivers = await Driver.find({
+      licenseExpiry: { $lte: now }
+    });
+    
+    res.json({
+      message: 'License expiry check completed',
+      expiredCount: result.modifiedCount,
+      totalExpiredDrivers: expiredDrivers.length,
+      restoredCount: restoreResult.modifiedCount,
+      expiredDrivers: expiredDrivers.map(d => ({
+        name: d.fullName,
+        licenseNumber: d.licenseNumber,
+        expiryDate: d.licenseExpiry,
+        status: d.availabilityStatus
+      })),
+      updatedDrivers: updatedDrivers.map(d => ({
+        name: d.fullName,
+        licenseNumber: d.licenseNumber,
+        expiryDate: d.licenseExpiry,
+        status: d.availabilityStatus
+      }))
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -131,6 +131,14 @@ const driverSchema = new mongoose.Schema({
   lastStatusUpdate: {
     type: Date,
     default: Date.now
+  },
+  previousStatus: {
+    type: String,
+    enum: {
+      values: ['Available', 'Busy', 'On Leave', 'Suspended', 'Inactive'],
+      message: 'Previous status must be Available, Busy, On Leave, Suspended, or Inactive'
+    },
+    default: 'Available'
   }
 }, {
   timestamps: true
@@ -164,9 +172,21 @@ driverSchema.pre('save', function(next) {
   if (this.licenseExpiry) {
     // Check if license is expired
     if (this.licenseExpiry <= now) {
+      // Store previous status before marking as inactive (only if not already inactive)
+      if (this.availabilityStatus !== 'Inactive') {
+        this.previousStatus = this.availabilityStatus;
+      }
       this.availabilityStatus = 'Inactive';
       this.isActive = false;
       this.lastStatusUpdate = now;
+    } else {
+      // License is valid - restore previous status if currently inactive due to expiry
+      if (this.availabilityStatus === 'Inactive' && this.previousStatus && this.previousStatus !== 'Inactive') {
+        this.availabilityStatus = this.previousStatus;
+        this.isActive = true;
+        this.lastStatusUpdate = now;
+        this.licenseExpiryWarning = false;
+      }
     }
     
     // Check if license is expiring soon (within 30 days)
@@ -195,13 +215,16 @@ driverSchema.statics.updateExpiredLicenses = async function() {
       licenseExpiry: { $lte: now },
       availabilityStatus: { $ne: 'Inactive' }
     },
-    {
-      $set: {
-        availabilityStatus: 'Inactive',
-        isActive: false,
-        lastStatusUpdate: now
+    [
+      {
+        $set: {
+          previousStatus: '$availabilityStatus',
+          availabilityStatus: 'Inactive',
+          isActive: false,
+          lastStatusUpdate: now
+        }
       }
-    }
+    ]
   );
   
   // Set warning flag for licenses expiring within 30 days
@@ -250,6 +273,31 @@ driverSchema.statics.getExpiredDrivers = async function() {
     licenseExpiry: { $lte: new Date() },
     isActive: true
   });
+};
+
+// Static method to restore drivers with renewed licenses
+driverSchema.statics.restoreRenewedDrivers = async function() {
+  const now = new Date();
+  
+  const result = await this.updateMany(
+    {
+      licenseExpiry: { $gt: now },
+      availabilityStatus: 'Inactive',
+      previousStatus: { $exists: true, $ne: 'Inactive' }
+    },
+    [
+      {
+        $set: {
+          availabilityStatus: '$previousStatus',
+          isActive: true,
+          lastStatusUpdate: now,
+          licenseExpiryWarning: false
+        }
+      }
+    ]
+  );
+  
+  return result;
 };
 
 module.exports = mongoose.model('Driver', driverSchema);

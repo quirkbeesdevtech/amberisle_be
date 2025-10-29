@@ -15,6 +15,7 @@ const {
   unassignDriverFromBus,
   getDriverStats,
   updateExpiredLicenses,
+  checkExpiredLicenses,
   reactivateDriver,
   getExistingContactNumbers,
   uploadDriverPhoto,
@@ -42,8 +43,11 @@ router.get('/expired', getExpiredDrivers);
 // Get drivers by status
 router.get('/status/:status', getDriversByStatus);
 
-// Get driver by ID
-router.get('/:id', getDriverById);
+// Manual check expired licenses (for testing) — must be BEFORE param routes
+router.get('/check-expired-licenses', checkExpiredLicenses);
+
+// Update expired licenses (for cron job)
+router.post('/update-expired-licenses', updateExpiredLicenses);
 
 // Create new driver
 router.post('/', createDriver);
@@ -51,8 +55,8 @@ router.post('/', createDriver);
 // Assign driver to bus
 router.post('/assign', assignDriverToBus);
 
-// Update expired licenses (for cron job)
-router.post('/update-expired-licenses', updateExpiredLicenses);
+// Get driver by ID (keep AFTER specific routes)
+router.get('/:id', getDriverById);
 
 // Update driver
 router.put('/:id', updateDriver);
