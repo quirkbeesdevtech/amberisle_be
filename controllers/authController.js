@@ -31,33 +31,25 @@ exports.register = async (req, res) => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // Create new user
+    // Create new user (unverified initially)
     const user = new User({
       email,
       password,
       fullname,
       firstName,
       lastName,
-      phone
+      phone,
+      isVerified: false,
+      otpLastSentAt: new Date()
     });
 
     await user.save();
 
-    // Generate token
-    const token = generateToken(user._id);
-
+    // Respond requiring OTP verification (bypass: any OTP will be accepted)
     res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        fullname: user.fullname,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phone: user.phone,
-        role: user.role
-      }
+      message: 'Account created. Please verify OTP to continue.',
+      requiresOtp: true,
+      email: user.email
     });
 
   } catch (error) {
@@ -108,6 +100,11 @@ exports.login = async (req, res) => {
       return res.status(403).json({ error: 'User access only' });
     }
 
+    // For users, require OTP verification before login
+    if (!isAdminMount && !user.isVerified) {
+      return res.status(403).json({ error: 'Please verify the OTP sent to your email before logging in.' });
+    }
+
     // Reset login attempts on successful login
     await user.resetLoginAttempts();
 
@@ -133,6 +130,41 @@ exports.login = async (req, res) => {
     res.status(500).json({ 
       error: error.message || 'Login failed' 
     });
+  }
+};
+
+// Verify OTP (bypass: accept any code) and mark user as verified
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // Accept any OTP value for now
+    user.isVerified = true;
+    await user.save();
+    return res.json({ message: 'OTP verified successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP' });
+  }
+};
+
+// Resend OTP (placeholder: update timestamp only)
+exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    user.otpLastSentAt = new Date();
+    await user.save();
+    return res.json({ message: 'OTP resent successfully.' });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP' });
   }
 };
 

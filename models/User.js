@@ -34,6 +34,15 @@ const userSchema = new mongoose.Schema({
     trim: true,
     match: [/^[0-9]{10}$/, 'Phone number must be 10 digits']
   },
+  // OTP and verification
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  otpLastSentAt: {
+    type: Date,
+    default: null
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],
