@@ -15,19 +15,37 @@ const userSchema = new mongoose.Schema({
     required: true,
     minlength: 6
   },
-  firstName: {
+  fullname: {
     type: String,
     required: true,
+    trim: true
+  },
+  firstName: {
+    type: String,
     trim: true
   },
   lastName: {
     type: String,
-    required: true,
     trim: true
+  },
+  phone: {
+    type: String,
+    required: true,
+    trim: true,
+    match: [/^[0-9]{10}$/, 'Phone number must be 10 digits']
+  },
+  // OTP and verification
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  otpLastSentAt: {
+    type: Date,
+    default: null
   },
   role: {
     type: String,
-    enum: ['admin', 'user'],
+    enum: ['user', 'admin'],
     default: 'user'
   },
   isActive: {

@@ -8,42 +8,48 @@ const generateToken = (userId) => {
   });
 };
 
-// Register new user
+// Register new user (blocked under /api/admin/auth)
 exports.register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    // If mounted under admin base, disallow registration here
+    if ((req.baseUrl || '').startsWith('/api/admin')) {
+      return res.status(403).json({ error: 'Admin registration is not allowed via this endpoint' });
+    }
+
+    const { email, password, fullname, phone } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ 
-        error: 'User with this email already exists' 
+        error: 'Email already exists. Please use another email.' 
       });
     }
 
-    // Create new user
+    // Split fullname into firstName and lastName
+    const nameParts = fullname.trim().split(/\s+/);
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Create new user (unverified initially)
     const user = new User({
       email,
       password,
+      fullname,
       firstName,
-      lastName
+      lastName,
+      phone,
+      isVerified: false,
+      otpLastSentAt: new Date()
     });
 
     await user.save();
 
-    // Generate token
-    const token = generateToken(user._id);
-
+    // Respond requiring OTP verification (bypass: any OTP will be accepted)
     res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role
-      }
+      message: 'Account created. Please verify OTP to continue.',
+      requiresOtp: true,
+      email: user.email
     });
 
   } catch (error) {
@@ -54,7 +60,7 @@ exports.register = async (req, res) => {
   }
 };
 
-// Login user
+// Login user or admin depending on mount path
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -85,6 +91,20 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Enforce role based on mount path
+    const isAdminMount = (req.baseUrl || '').startsWith('/api/admin');
+    if (isAdminMount && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access only' });
+    }
+    if (!isAdminMount && user.role !== 'user') {
+      return res.status(403).json({ error: 'User access only' });
+    }
+
+    // For users, require OTP verification before login
+    if (!isAdminMount && !user.isVerified) {
+      return res.status(403).json({ error: 'Please verify the OTP sent to your email before logging in.' });
+    }
+
     // Reset login attempts on successful login
     await user.resetLoginAttempts();
 
@@ -97,8 +117,10 @@ exports.login = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
+        fullname: user.fullname,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         role: user.role
       }
     });
@@ -108,6 +130,41 @@ exports.login = async (req, res) => {
     res.status(500).json({ 
       error: error.message || 'Login failed' 
     });
+  }
+};
+
+// Verify OTP (bypass: accept any code) and mark user as verified
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // Accept any OTP value for now
+    user.isVerified = true;
+    await user.save();
+    return res.json({ message: 'OTP verified successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP' });
+  }
+};
+
+// Resend OTP (placeholder: update timestamp only)
+exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    user.otpLastSentAt = new Date();
+    await user.save();
+    return res.json({ message: 'OTP resent successfully.' });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP' });
   }
 };
 
