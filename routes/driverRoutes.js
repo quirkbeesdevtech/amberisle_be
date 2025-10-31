@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const upload = require('../middleware/upload');
 const {
   getDrivers,
   getDriverById,
@@ -9,13 +10,23 @@ const {
   getDriversByStatus,
   getAvailableDrivers,
   getDriversWithExpiringLicenses,
+  getExpiredDrivers,
   assignDriverToBus,
   unassignDriverFromBus,
-  getDriverStats
+  getDriverStats,
+  updateExpiredLicenses,
+  checkExpiredLicenses,
+  reactivateDriver,
+  getExistingContactNumbers,
+  uploadDriverPhoto,
+  deleteDriverPhoto
 } = require('../controllers/driverController');
 
 // Get all drivers
 router.get('/', getDrivers);
+
+// Get existing contact numbers
+router.get('/existing-contacts', getExistingContactNumbers);
 
 // Get driver statistics
 router.get('/stats', getDriverStats);
@@ -26,11 +37,17 @@ router.get('/available', getAvailableDrivers);
 // Get drivers with expiring licenses
 router.get('/expiring-licenses', getDriversWithExpiringLicenses);
 
+// Get expired drivers
+router.get('/expired', getExpiredDrivers);
+
 // Get drivers by status
 router.get('/status/:status', getDriversByStatus);
 
-// Get driver by ID
-router.get('/:id', getDriverById);
+// Manual check expired licenses (for testing) — must be BEFORE param routes
+router.get('/check-expired-licenses', checkExpiredLicenses);
+
+// Update expired licenses (for cron job)
+router.post('/update-expired-licenses', updateExpiredLicenses);
 
 // Create new driver
 router.post('/', createDriver);
@@ -38,11 +55,23 @@ router.post('/', createDriver);
 // Assign driver to bus
 router.post('/assign', assignDriverToBus);
 
+// Get driver by ID (keep AFTER specific routes)
+router.get('/:id', getDriverById);
+
 // Update driver
 router.put('/:id', updateDriver);
 
 // Unassign driver from bus
 router.put('/:id/unassign', unassignDriverFromBus);
+
+// Reactivate driver (when license is renewed)
+router.put('/:id/reactivate', reactivateDriver);
+
+// Upload driver photo
+router.post('/:driverId/upload-photo', upload.single('photo'), uploadDriverPhoto);
+
+// Delete driver photo
+router.delete('/:driverId/photo', deleteDriverPhoto);
 
 // Delete driver
 router.delete('/:id', deleteDriver);

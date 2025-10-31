@@ -1,44 +1,56 @@
+/*
+  Usage:
+  node scripts/createAdmin.js admin@gmail.com StrongPass123
+  If no args, defaults to admin@gmail.com / Admin@1234
+*/
+
 const mongoose = require('mongoose');
-const User = require('../models/User');
 require('dotenv').config();
 
-const createAdmin = async () => {
+const User = require('../models/User');
+
+async function run() {
+  const email = process.argv[2] || 'admin@gmail.com';
+  const password = process.argv[3] || 'Admin@1234';
+  const fullname = 'System Admin';
+  const phone = '9999999999';
+
   try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bus_management', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/bus_management';
+    await mongoose.connect(uri);
 
-    console.log('Connected to MongoDB');
-
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@gmail.com' });
-    if (existingAdmin) {
-      console.log('Admin user already exists');
-      process.exit(0);
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ email, password, fullname, phone, role: 'admin' });
+      await user.save();
+      console.log(`Created admin user: ${email}`);
+    } else {
+      let changed = false;
+      if (user.role !== 'admin') {
+        user.role = 'admin';
+        changed = true;
+      }
+      if (password) {
+        user.password = password; // will be hashed by pre-save
+        changed = true;
+      }
+      if (changed) {
+        await user.save();
+        console.log(`Updated admin user: ${email}`);
+      } else {
+        console.log(`Admin already exists (no changes): ${email}`);
+      }
     }
 
-    // Create admin user
-    const adminUser = new User({
-      email: 'admin@gmail.com',
-      password: 'admin@123',
-      firstName: 'Admin',
-      lastName: 'User',
-      role: 'admin'
-    });
+    const ok = await user.comparePassword(password);
+    console.log('Password set/verified:', ok);
 
-    await adminUser.save();
-    console.log('Admin user created successfully!');
-    console.log('Email: admin@gmail.com');
-    console.log('Password: admin@123');
-
-  } catch (error) {
-    console.error('Error creating admin user:', error);
+  } catch (err) {
+    console.error('createAdmin error:', err);
+    process.exitCode = 1;
   } finally {
-    mongoose.connection.close();
-    process.exit(0);
+    await mongoose.disconnect();
   }
-};
+}
 
-createAdmin();
+run();
